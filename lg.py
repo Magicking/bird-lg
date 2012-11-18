@@ -99,16 +99,16 @@ def whois_command(query):
     return subprocess.Popen(['whois', query], stdout=subprocess.PIPE).communicate()[0].decode('utf-8', 'ignore')
 
 
-def bird_command(host, proto, query):
-    """Alias to bird_proxy for bird service"""
-    return bird_proxy(host, proto, "bird", query)
+def proxy_command(host, proto, query):
+    """Alias to proxy_proxy for proxy service"""
+    return proxy_proxy(host, proto, "proxy", query)
 
 
-def bird_proxy(host, proto, service, query):
+def proxy_proxy(host, proto, service, query):
     """Retreive data of a service from a running lg-proxy on a remote node
 
     First and second arguments are the node and the port of the running lg-proxy
-    Third argument is the service, can be "traceroute" or "bird"
+    Third argument is the service, can be "traceroute" or "router"
     Last argument, the query to pass to the service
 
     return tuple with the success of the command and the returned data
@@ -218,7 +218,7 @@ def summary(hosts, proto="ipv4"):
     summary = {}
     errors = []
     for host in hosts.split("+"):
-        ret, res = bird_command(host, proto, command)
+        ret, res = proxy_command(host, proto, command)
         res = res.split("\n")
 
         if ret is False:
@@ -226,7 +226,7 @@ def summary(hosts, proto="ipv4"):
             continue
 
         if len(res) <= 1:
-            errors.append("%s: bird command failed with error, %s" % (host, "\n".join(res)))
+            errors.append("%s: proxy command failed with error, %s" % (host, "\n".join(res)))
             continue
 
         data = []
@@ -257,7 +257,7 @@ def detail(hosts, proto):
     detail = {}
     errors = []
     for host in hosts.split("+"):
-        ret, res = bird_command(host, proto, command)
+        ret, res = proxy_command(host, proto, command)
         res = res.split("\n")
 
         if ret is False:
@@ -265,7 +265,7 @@ def detail(hosts, proto):
             continue
 
         if len(res) <= 1:
-            errors.append("%s: bird command failed with error, %s" % (host, "\n".join(res)))
+            errors.append("%s: proxy command failed with error, %s" % (host, "\n".join(res)))
             continue
 
         detail[host] = {"status": res[1], "description": add_links(res[2:])}
@@ -296,7 +296,7 @@ def traceroute(hosts, proto):
     errors = []
     infos = {}
     for host in hosts.split("+"):
-        status, resultat = bird_proxy(host, proto, "traceroute", q)
+        status, resultat = proxy_proxy(host, proto, "traceroute", q)
         if status is False:
             errors.append("%s" % resultat)
             continue
@@ -363,7 +363,7 @@ def get_as_name(_as):
 
 
 def get_as_number_from_protocol_name(host, proto, protocol):
-    ret, res = bird_command(host, proto, "show protocols all %s" % protocol)
+    ret, res = proxy_command(host, proto, "show protocols all %s" % protocol)
     re_asnumber = re.search("Neighbor AS:\s*(\d*)", res)
     if re_asnumber:
         return re_asnumber.group(1)
@@ -480,7 +480,7 @@ def show_bgpmap():
     return Response(graph.create_png(), mimetype='image/png')
 
 
-def build_as_tree_from_raw_bird_ouput(host, proto, text):
+def build_as_tree_from_raw_proxy_ouput(host, proto, text):
     """Extract the as path from the raw bird "show route all" command"""
 
     path = None
@@ -582,7 +582,7 @@ def show_route(request_type, hosts, proto):
     detail = {}
     errors = []
     for host in hosts.split("+"):
-        ret, res = bird_command(host, proto, command)
+        ret, res = proxy_command(host, proto, command)
         res = res.split("\n")
 
         if ret is False:
@@ -590,11 +590,11 @@ def show_route(request_type, hosts, proto):
             continue
 
         if len(res) <= 1:
-            errors.append("%s: bird command failed with error, %s" % (host, "\n".join(res)))
+            errors.append("%s: proxy command failed with error, %s" % (host, "\n".join(res)))
             continue
 
         if bgpmap:
-            detail[host] = build_as_tree_from_raw_bird_ouput(host, proto, res)
+            detail[host] = build_as_tree_from_raw_proxy_ouput(host, proto, res)
         else:
             detail[host] = add_links(res)
 

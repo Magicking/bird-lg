@@ -25,8 +25,6 @@ from logging.handlers import TimedRotatingFileHandler
 import subprocess
 from urllib import unquote
 
-from bird import BirdSocket
-
 from flask import Flask, request, abort
 
 app = Flask(__name__)
@@ -68,14 +66,18 @@ def traceroute():
 
 
 
-@app.route("/bird")
-@app.route("/bird6")
+@app.route("/proxy")
+@app.route("/proxy6")
 def bird():
     check_accesslist()
 
-    if request.path == "/bird": b = BirdSocket(file="/var/run/bird.ctl")
-    elif request.path == "/bird6": b = BirdSocket(file="/var/run/bird6.ctl")
-    else: return "No bird socket selected"
+    router_type = app.config.get("ROUTER_TYPE", "bird")
+    if router_type == "bird":
+        from bird import BirdSocket
+        if request.path == "/proxy": b = BirdSocket(file="/var/run/bird.ctl")
+        elif request.path == "/proxy6": b = BirdSocket(file="/var/run/bird6.ctl")
+        else: return "No bird socket selected"
+    else: return "Router %s is not available" % (router_type)
 
     query = request.args.get("q","")
     query = unquote(query)
