@@ -88,10 +88,10 @@ def bird():
 
     router_type = app.config.get("ROUTER_TYPE", "bird")
     if router_type == "bird":
-        from bird import BirdSocket
-        if request.path == "/proxy": b = BirdSocket(file="/var/run/bird.ctl")
-        elif request.path == "/proxy6": b = BirdSocket(file="/var/run/bird6.ctl")
-        else: return "No bird socket selected"
+        from bird import BirdServer
+        if request.path == "/proxy": b = BirdServer(file="/var/run/bird.ctl")
+        elif request.path == "/proxy6": b = BirdServer(file="/var/run/bird6.ctl")
+        else: return "No bird server selected"
     else: return "Router %s is not available" % (router_type)
 
     cmd = request.args.get("cmd","")
