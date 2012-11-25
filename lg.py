@@ -99,35 +99,31 @@ def whois_command(query):
     return subprocess.Popen(['whois', query], stdout=subprocess.PIPE).communicate()[0].decode('utf-8', 'ignore')
 
 
-def proxy_command(host, proto, query):
+def proxy_command(host, proto, cmd, query):
     """Alias to proxy_proxy for proxy service"""
-    return proxy_proxy(host, proto, "proxy", query)
+    return proxy_proxy(host, proto, cmd, query)
 
 
-def proxy_proxy(host, proto, service, query):
+def proxy_proxy(host, proto, cmd, query):
     """Retreive data of a service from a running lg-proxy on a remote node
 
     First and second arguments are the node and the port of the running lg-proxy
-    Third argument is the service, can be "traceroute" or "router"
-    Last argument, the query to pass to the service
+    Third argument is the command to pass to the proxy
+    Last argument, the query arguments to pass to the service
 
     return tuple with the success of the command and the returned data
     """
-
-    path = ""
-    if proto == "ipv6":
-        path = service + "6"
-    elif proto == "ipv4":
-        path = service
 
     port = app.config["PROXY"].get(host, "")
 
     if not port:
         return False, 'Host "%s" invalid' % host
-    elif not path:
+    elif not proto:
         return False, 'Proto "%s" invalid' % proto
+    elif not cmd:
+        return False, 'Cmd "%s" invalid' % cmd
     else:
-        url = "http://%s.%s:%d/%s?q=%s" % (host, app.config["DOMAIN"], port, path, quote(query))
+        url = "http://%s.%s:%d/proxy?cmd=%s&q=%s&ip=%s" % (host, app.config["DOMAIN"], port, cmd, quote(query), proto)
         try:
             f = urlopen(url)
             resultat = f.read()
@@ -213,12 +209,12 @@ SUMMARY_RE_MATCH = r"(?P<name>[\w_]+)\s+(?P<proto>\w+)\s+(?P<table>\w+)\s+(?P<st
 def summary(hosts, proto="ipv4"):
 
     set_session("summary", hosts, proto, "")
-    command = "show protocols"
+    command = "summary"
 
     summary = {}
     errors = []
     for host in hosts.split("+"):
-        ret, res = proxy_command(host, proto, command)
+        ret, res = proxy_command(host, proto, command, "")
         res = res.split("\n")
 
         if ret is False:
@@ -252,12 +248,12 @@ def detail(hosts, proto):
         abort(400)
 
     set_session("detail", hosts, proto, name)
-    command = "show protocols all %s" % name
+    command = "summary_all"
 
     detail = {}
     errors = []
     for host in hosts.split("+"):
-        ret, res = proxy_command(host, proto, command)
+        ret, res = proxy_command(host, proto, command, name)
         res = res.split("\n")
 
         if ret is False:
@@ -363,7 +359,7 @@ def get_as_name(_as):
 
 
 def get_as_number_from_protocol_name(host, proto, protocol):
-    ret, res = proxy_command(host, proto, "show protocols all %s" % protocol)
+    ret, res = proxy_command(host, proto, "summary_all", protocol)
     re_asnumber = re.search("Neighbor AS:\s*(\d*)", res)
     if re_asnumber:
         return re_asnumber.group(1)
@@ -541,48 +537,35 @@ def show_route(request_type, hosts, proto):
 
     bgpmap = request_type.endswith("bgpmap")
 
-    all = (request_type.endswith("detail") and " all" or "")
-    if bgpmap:
-        all = " all"
+    mask = ""
+    if len(expression.split("/")) == 2:
+        expression, mask = (expression.split("/"))
 
-    if request_type.startswith("adv"):
-        command = "show route " + expression.strip()
-        if bgpmap and not command.endswith("all"):
-            command = command + " all"
-    elif request_type.startswith("where"):
-        command = "show route where net ~ [ " + expression + " ]" + all
-    else:
-        mask = ""
-        if len(expression.split("/")) == 2:
-            expression, mask = (expression.split("/"))
+    if not mask and proto == "ipv4":
+        mask = "32"
+    if not mask and proto == "ipv6":
+        mask = "128"
+    if not mask_is_valid(mask):
+        return error_page("mask %s is invalid" % mask)
 
-        if not mask and proto == "ipv4":
-            mask = "32"
-        if not mask and proto == "ipv6":
-            mask = "128"
-        if not mask_is_valid(mask):
-            return error_page("mask %s is invalid" % mask)
+    if proto == "ipv6" and not ipv6_is_valid(expression):
+        try:
+            expression = resolve(expression, "AAAA")
+        except:
+            return error_page("%s is unresolvable or invalid for %s" % (expression, proto))
+    if proto == "ipv4" and not ipv4_is_valid(expression):
+        try:
+            expression = resolve(expression, "A")
+        except:
+            return error_page("%s is unresolvable or invalid for %s" % (expression, proto))
 
-        if proto == "ipv6" and not ipv6_is_valid(expression):
-            try:
-                expression = resolve(expression, "AAAA")
-            except:
-                return error_page("%s is unresolvable or invalid for %s" % (expression, proto))
-        if proto == "ipv4" and not ipv4_is_valid(expression):
-            try:
-                expression = resolve(expression, "A")
-            except:
-                return error_page("%s is unresolvable or invalid for %s" % (expression, proto))
-
-        if mask:
-            expression += "/" + mask
-
-        command = "show route for " + expression + all
+    if mask:
+        expression += "/" + mask
 
     detail = {}
     errors = []
     for host in hosts.split("+"):
-        ret, res = proxy_command(host, proto, command)
+        ret, res = proxy_command(host, proto, request_type, expression)
         res = res.split("\n")
 
         if ret is False:
@@ -601,7 +584,7 @@ def show_route(request_type, hosts, proto):
     if bgpmap:
         detail = json.dumps(detail)
 
-    return render_template((bgpmap and 'bgpmap.html' or 'route.html'), detail=detail, command=command, expression=expression, errors=errors)
+    return render_template((bgpmap and 'bgpmap.html' or 'route.html'), detail=detail, command=request_type, expression=expression, errors=errors)
 
 
 if __name__ == "__main__":
